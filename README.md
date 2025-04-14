@@ -1,3 +1,5 @@
+- `CleanCityNYC_database_dump.sql` – Full dump including schema and sample data.
+- `logical_erd_CleanCityNYC.png` – Entity-relationship diagram of the database in the 3rd normal form.
 # CleanCityNYC
 
 CleanCityNYC is a MySQL database project exploring the relationship between NYC community district demographics, 
@@ -11,6 +13,7 @@ sanitation infrastructure, and 311 complaint data.
 
 ## Entity-Relationship Diagram
 
-![CleanCityNYC ERD](logical_erd_cleancitynyc.png)
+![CleanCityNYC ERD](logical_erd_CleanCityNYC.png)
+
 
 
