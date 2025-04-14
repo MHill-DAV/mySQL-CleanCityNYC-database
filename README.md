@@ -9,7 +9,7 @@ sanitation infrastructure, and 311 complaint data.
 
 - `CreateAndQuery_CleanCityNYC_database.sql` – SQL script for creating the database structure and some basic queries.
 - `mySQL_CleanCityNYC_database_dump.sql` – Full dump including schema and sample data.
-- `logical_erd_cleancitynyc.png` – Entity-relationship diagram of the database.
+- `logical_erd_CleanCityNYC.png` – Entity-relationship diagram of the database.
 
 ## Entity-Relationship Diagram
 
