@@ -154,79 +154,6 @@ INSERT INTO borough (borough_name) VALUES
 ('Queens'),
 ('Staten Island');
 
-#total_pop
-/*INSERT INTO cdta_total_pop (total_pop, cdta_id, year)
-VALUES 
-    (201377, 1, 2021),
-    (125740, 2, 2021),
-    (181522, 3, 2021),
-    (118143, 4, 2021),
-    (204399, 5, 2021),
-    (123369, 6, 2021),
-    (126085, 7, 2021),
-    (111533, 8, 2021),
-    (100357, 9, 2021),
-    (130654, 10, 2021),
-    (196816, 11, 2021),
-    (193089, 12, 2021),
-    (112519, 13, 2021),
-    (165478, 14, 2021),
-    (164570, 15, 2021),
-    (89142, 16, 2021),
-    (158988, 17, 2021),
-    (208559, 18, 2021),
-    (0, 19, 2021),
-    (20, 20, 2021),
-    (97502, 21, 2021),
-    (54904, 22, 2021),
-    (89471, 23, 2021),
-    (154943, 24, 2021),
-    (138214, 25, 2021),
-    (86349, 26, 2021),
-    (145371, 27, 2021),
-    (109962, 28, 2021),
-    (175231, 29, 2021),
-    (130956, 30, 2021),
-    (121138, 31, 2021),
-    (169246, 32, 2021),
-    (0, 33, 2021),
-    (15, 34, 2021),
-    (52, 35, 2021),
-    (72255, 36, 2021),
-    (87858, 37, 2021),
-    (157101, 38, 2021),
-    (117930, 39, 2021),
-    (49302, 40, 2021),
-    (149052, 41, 2021),
-    (221646, 42, 2021),
-    (217279, 43, 2021),
-    (115788, 44, 2021),
-    (133831, 45, 2021),
-    (126338, 46, 2021),
-    (208994, 47, 2021),
-    (0, 48, 2021),
-    (179025, 49, 2021),
-    (123037, 50, 2021),
-    (161648, 51, 2021),
-    (177666, 52, 2021),
-    (190915, 53, 2021),
-    (122786, 54, 2021),
-    (253104, 55, 2021),
-    (160231, 56, 2021),
-    (151879, 57, 2021),
-    (143380, 58, 2021),
-    (126110, 59, 2021),
-    (260024, 60, 2021),
-    (214163, 61, 2021),
-    (135784, 62, 2021),
-    (135784, 62, 2021),
-    (0, 63, 2021),
-    (0, 64, 2021),
-    (0, 66, 2021),
-    (13, 67, 2021),
-    (179530, 68, 2021),
-    (170110, 70, 2021),
-    (785, 71, 2021);*/
 
 #census_race_group
 INSERT INTO census_race_group (census_race_code, group_name)
@@ -375,6 +302,192 @@ JOIN
 census_race_group r ON p1.census_race_code_id = r.census_race_code_id
 WHERE
 p1.census_race_code_id IS NOT NULL;
+
+-- 	QUERIES --
+
+-- 1. What is the most common sanitation-related 311 complaint in each community district?
+
+SELECT
+  cdta.cdta_description,
+  ct.complaint_type,
+  COUNT(*) AS total_complaints
+FROM service_request sr
+JOIN community_district_tabulation_area cdta ON sr.cdta_id = cdta.cdta_id
+JOIN complaint_type ct ON sr.complaint_type_id = ct.complaint_type_id
+GROUP BY sr.cdta_id, ct.complaint_type, cdta.cdta_description
+HAVING COUNT(*) = (
+  SELECT MAX(c)
+  FROM (
+    SELECT COUNT(*) AS c
+    FROM service_request sr2
+    WHERE sr2.cdta_id = sr.cdta_id
+    GROUP BY sr2.complaint_type_id
+  ) AS counts
+)
+ORDER BY cdta.cdta_description;
+
+-- 2. What is the most common complaint in majority Black community districts?
+
+SELECT
+  cdta.cdta_description,
+  ct.complaint_type,
+  COUNT(*) AS total_complaints
+FROM service_request sr
+JOIN community_district_tabulation_area cdta ON sr.cdta_id = cdta.cdta_id
+JOIN complaint_type ct ON sr.complaint_type_id = ct.complaint_type_id
+WHERE cdta.cdta_id IN (
+  SELECT cdta_id
+  FROM cdta_population_demographic pop
+  JOIN census_race_group r ON pop.census_race_code_id = r.census_race_code_id
+  WHERE r.group_name = 'Black or African American alone'
+  GROUP BY cdta_id
+  HAVING SUM(pop.population_by_race) > (
+    SELECT SUM(pop2.population_by_race)
+    FROM cdta_population_demographic pop2
+    WHERE pop2.cdta_id = pop.cdta_id
+  ) / 2
+)
+GROUP BY cdta.cdta_id, ct.complaint_type
+ORDER BY cdta.cdta_id, total_complaints DESC;
+
+-- 3. What is the average number of complaints for districts WITH a waste center?
+
+SELECT
+  AVG(sub.total_requests) AS avg_complaints_with_waste_center
+FROM (
+  SELECT cdta.cdta_id, COUNT(*) AS total_requests
+  FROM service_request sr
+  JOIN community_district_tabulation_area cdta ON sr.cdta_id = cdta.cdta_id
+  WHERE cdta.cdta_id IN (
+    SELECT c.cdta_id
+    FROM transfer_waste_station t
+    JOIN dsny_district d ON t.dsny_district_id = d.dsny_district_id
+    JOIN community_district_tabulation_area c ON d.cdta_id = c.cdta_id
+  )
+  GROUP BY cdta.cdta_id
+) sub;
+
+-- 4. What is the average number of complaints for districts WITHOUT a waste center?
+
+SELECT
+  AVG(sub.total_requests) AS avg_complaints_without_waste_center
+FROM (
+  SELECT cdta.cdta_id, COUNT(*) AS total_requests
+  FROM service_request sr
+  JOIN community_district_tabulation_area cdta ON sr.cdta_id = cdta.cdta_id
+  WHERE cdta.cdta_id NOT IN (
+    SELECT c.cdta_id
+    FROM transfer_waste_station t
+    JOIN dsny_district d ON t.dsny_district_id = d.dsny_district_id
+    JOIN community_district_tabulation_area c ON d.cdta_id = c.cdta_id
+  )
+  GROUP BY cdta.cdta_id
+) sub;
+
+-- 5. Which districts have the highest median household income and how many complaints do they receive?
+
+SELECT
+  cdta.cdta_description,
+  m.median_hh_income,
+  COUNT(sr.service_request_id) AS total_complaints
+FROM community_district_tabulation_area cdta
+JOIN median_household_income m ON cdta.cdta_id = m.cdta_id
+LEFT JOIN service_request sr ON cdta.cdta_id = sr.cdta_id
+GROUP BY cdta.cdta_id, m.median_hh_income
+ORDER BY m.median_hh_income DESC
+LIMIT 10;
+
+-- 6. Which complaint types are most common in districts with high population density?
+
+SELECT
+  cdta.cdta_description,
+  ct.complaint_type,
+  COUNT(*) AS complaint_count
+FROM service_request sr
+JOIN complaint_type ct ON sr.complaint_type_id = ct.complaint_type_id
+JOIN community_district_tabulation_area cdta ON sr.cdta_id = cdta.cdta_id
+WHERE cdta.cdta_id IN (
+  SELECT cdta_id
+  FROM cdta_population_demographic
+  GROUP BY cdta_id
+  HAVING SUM(population_by_race) > 200000 -- customize threshold
+)
+GROUP BY cdta.cdta_id, ct.complaint_type
+ORDER BY complaint_count DESC;
+
+-- 7. What is the most common complaint in majority Black community districts?
+
+SELECT
+  cdta.cdta_description,
+  ct.complaint_type,
+  COUNT(*) AS total_complaints
+FROM service_request sr
+JOIN community_district_tabulation_area cdta ON sr.cdta_id = cdta.cdta_id
+JOIN complaint_type ct ON sr.complaint_type_id = ct.complaint_type_id
+WHERE cdta.cdta_id IN (
+  SELECT cdta_id
+  FROM cdta_population_demographic pop
+  JOIN census_race_group r ON pop.census_race_code_id = r.census_race_code_id
+  WHERE r.group_name = 'Black or African American alone'
+  GROUP BY cdta_id
+  HAVING SUM(pop.population_by_race) > (
+    SELECT SUM(pop2.population_by_race)
+    FROM cdta_population_demographic pop2
+    WHERE pop2.cdta_id = pop.cdta_id
+  ) / 2
+)
+GROUP BY cdta.cdta_id, ct.complaint_type
+ORDER BY cdta.cdta_id, total_complaints DESC;
+
+-- 8. Do lower-income districts have fewer public litter baskets than higher-income ones?
+
+SELECT
+  CASE
+    WHEN lb_districts.cdta_id IS NOT NULL THEN 'With Litter Baskets'
+    ELSE 'Without Litter Baskets'
+  END AS has_baskets,
+  ROUND(AVG(m.median_hh_income), 2) AS avg_median_income,
+  COUNT(DISTINCT cdta.cdta_id) AS num_districts
+FROM community_district_tabulation_area cdta
+JOIN median_household_income m ON cdta.cdta_id = m.cdta_id
+LEFT JOIN (
+    SELECT DISTINCT dd.cdta_id
+    FROM litter_basket lb
+    JOIN dsny_section ds ON lb.dsny_section_id = ds.dsny_section_id
+    JOIN dsny_district dd ON ds.dsny_district_id = dd.dsny_district_id
+) lb_districts ON lb_districts.cdta_id = cdta.cdta_id
+GROUP BY
+  CASE
+    WHEN lb_districts.cdta_id IS NOT NULL THEN 'With Litter Baskets'
+    ELSE 'Without Litter Baskets'
+  END;
+  
+-- OTHER TASKS --
+
+-- UPDATE DATA
+
+#update the closed_date of a service_request with a date
+UPDATE service_request
+SET closed_date = '2022-05-07 16:00:00' WHERE closed_date IS NULL
+ORDER BY created_date DESC
+LIMIT 1;
+
+-- ADD DATA 
+
+-- transaction: Add a new census race group to the database
+#START TRANSACTION:
+INSERT INTO census_race_group (census_race_code, group_name, description) VALUES ('4omRNH', 'Four or more races non Hispanic');
+COMMIT;
+
+-- Create a trigger: sets a timestamp when a new row is inserted into the litter_basket table, allowing tracking of when litter baskets are added
+CREATE TRIGGER add_created_at BEFORE INSERT ON litter_basket FOR EACH ROW
+SET NEW.created_at = NOW();
+  
+
+
+
+
+
 
 
  
